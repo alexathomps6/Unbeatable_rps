@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UNBEATABLE — Rock Paper Scissors</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0b0e13;
+    --panel:#12161d;
+    --panel-line:#232a35;
+    --signal:#7dffb0;
+    --signal-dim:#3a5c4a;
+    --warn:#ff5c5c;
+    --text:#eceff4;
+    --muted:#7c8598;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--ink);color:var(--text);font-family:'IBM Plex Sans',sans-serif;height:100%;overflow:hidden;}
+  .display{font-family:'Big Shoulders Display',sans-serif;font-weight:800;letter-spacing:0.01em;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  #stage{position:relative;width:100vw;height:100vh;background:#000;}
+
+  video{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    transform:scaleX(-1);filter:saturate(0.75) contrast(1.05) brightness(0.85);
+  }
+  canvas#overlay{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none;}
+
+  #vignette{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.65) 100%);}
+
+  #scanline{position:absolute;inset:0;pointer-events:none;opacity:0.05;
+    background:repeating-linear-gradient(0deg, #fff 0px, #fff 1px, transparent 1px, transparent 3px);}
+
+  /* HUD */
+  .hud{position:absolute;inset:0;pointer-events:none;padding:28px;display:flex;flex-direction:column;justify-content:space-between;}
+  .hud-row{display:flex;justify-content:space-between;align-items:flex-start;}
+
+  .brand{font-size:15px;letter-spacing:0.14em;color:var(--muted);}
+  .brand b{color:var(--text);}
+
+  .score{text-align:right;}
+  .score-label{font-size:11px;letter-spacing:0.12em;color:var(--muted);margin-bottom:2px;}
+  .score-value{font-family:'Big Shoulders Display';font-weight:700;font-size:44px;line-height:1;color:var(--text);}
+  .score-value span{color:var(--signal);}
+  .score-sep{color:var(--muted);}
+  .score-loss{color:var(--warn) !important;}
+
+  #latency{
+    position:absolute;left:28px;bottom:28px;font-size:12px;color:var(--signal);
+    opacity:0;transition:opacity 0.3s;letter-spacing:0.04em;
+  }
+  #latency.show{opacity:1;}
+
+  #status{
+    position:absolute;right:28px;bottom:28px;font-size:12px;color:var(--muted);
+    letter-spacing:0.08em;text-align:right;max-width:260px;line-height:1.5;
+  }
+  #status .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--signal-dim);margin-right:6px;}
+  #status.tracking .dot{background:var(--signal);box-shadow:0 0 8px var(--signal);}
+
+  /* Center stage content */
+  #center{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;pointer-events:none;
+  }
+
+  #countdown{
+    font-family:'Big Shoulders Display';font-weight:800;font-size:min(28vw,320px);
+    line-height:1;color:var(--text);text-shadow:0 0 60px rgba(0,0,0,0.6);
+    opacity:0;transform:scale(0.7);transition:opacity 0.15s ease-out, transform 0.15s ease-out;
+  }
+  #countdown.show{opacity:1;transform:scale(1);}
+
+  #reveal{
+    display:none;flex-direction:column;align-items:center;gap:18px;
+  }
+  #reveal.show{display:flex;}
+
+  .duel{display:flex;align-items:center;gap:40px;}
+  .duel-side{display:flex;flex-direction:column;align-items:center;gap:10px;}
+  .duel-label{font-size:12px;letter-spacing:0.14em;color:var(--muted);}
+  .duel-icon{
+    font-family:'Big Shoulders Display';font-weight:800;font-size:26vw;line-height:1;
+    color:var(--text);opacity:0;transform:translateY(18px) scale(0.85);
+    transition:opacity 0.18s ease-out, transform 0.18s ease-out;
+  }
+  .duel-icon.show{opacity:1;transform:translateY(0) scale(1);}
+  .duel-icon.win{color:var(--signal);text-shadow:0 0 40px rgba(125,255,176,0.5);}
+  .duel-icon.lose{color:var(--warn);}
+  .duel-vs{font-family:'Big Shoulders Display';font-weight:700;font-size:22px;color:var(--muted);}
+
+  #verdict{
+    font-family:'Big Shoulders Display';font-weight:700;font-size:34px;letter-spacing:0.02em;
+    opacity:0;transform:translateY(8px);transition:opacity 0.2s ease-out 0.15s, transform 0.2s ease-out 0.15s;
+  }
+  #verdict.show{opacity:1;transform:translateY(0);}
+  #verdict.win{color:var(--signal);}
+  #verdict.lose{color:var(--warn);}
+  #verdict.tie{color:var(--muted);}
+
+  #sub{font-size:13px;color:var(--muted);margin-top:2px;opacity:0;transition:opacity 0.2s ease-out 0.3s;text-align:center;max-width:320px;}
+  #sub.show{opacity:1;}
+
+  /* Start overlay */
+  #start-overlay{
+    position:absolute;inset:0;background:var(--ink);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:22px;z-index:20;padding:24px;text-align:center;
+  }
+  #start-overlay h1{
+    font-family:'Big Shoulders Display';font-weight:800;font-size:min(11vw,72px);
+    line-height:0.95;margin:0;letter-spacing:0.01em;
+  }
+  #start-overlay h1 span{color:var(--signal);}
+  #start-overlay p{color:var(--muted);max-width:420px;line-height:1.6;font-size:15px;margin:0;}
+  .btn{
+    font-family:'IBM Plex Sans';font-weight:600;font-size:15px;letter-spacing:0.02em;
+    background:var(--signal);color:#06130c;border:none;padding:14px 30px;border-radius:2px;
+    cursor:pointer;pointer-events:auto;transition:transform 0.12s ease, background 0.12s ease;
+  }
+  .btn:hover{transform:translateY(-1px);background:#94ffc0;}
+  .btn:active{transform:translateY(0);}
+  .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--panel-line);}
+  .btn.ghost:hover{background:var(--panel);}
+  #err{color:var(--warn);font-size:13px;max-width:380px;}
+
+  #mode-toggle{
+    position:absolute;bottom:28px;left:50%;transform:translateX(-50%);
+    display:flex;gap:2px;background:var(--panel);border:1px solid var(--panel-line);
+    border-radius:3px;padding:3px;pointer-events:auto;z-index:15;
+  }
+  #mode-toggle button{
+    font-family:'IBM Plex Sans';font-size:12px;letter-spacing:0.04em;font-weight:500;
+    background:transparent;border:none;color:var(--muted);padding:8px 14px;border-radius:2px;
+    cursor:pointer;transition:all 0.15s;
+  }
+  #mode-toggle button.active{background:var(--panel-line);color:var(--text);}
+
+  #play-again{
+    position:absolute;bottom:80px;left:50%;transform:translateX(-50%);
+    opacity:0;pointer-events:none;transition:opacity 0.2s ease-out 0.4s;z-index:15;
+  }
+  #play-again.show{opacity:1;pointer-events:auto;}
+
+  /* Cheat toggle + timeline */
+  #cheat-toggle{
+    position:absolute;top:82px;right:28px;pointer-events:auto;z-index:15;
+    font-family:'IBM Plex Sans';font-weight:500;font-size:11px;letter-spacing:0.08em;
+    background:transparent;color:var(--muted);border:1px solid var(--panel-line);
+    padding:8px 12px;border-radius:2px;cursor:pointer;transition:all 0.15s;
+  }
+  #cheat-toggle:hover{color:var(--text);border-color:var(--signal-dim);}
+  #cheat-toggle.active{color:var(--signal);border-color:var(--signal-dim);}
+
+  #cheat-panel{
+    position:absolute;left:50%;bottom:78px;transform:translateX(-50%) translateY(10px);
+    width:min(92vw,620px);background:rgba(18,22,29,0.94);border:1px solid var(--panel-line);
+    border-radius:2px;padding:14px 20px 14px;z-index:14;opacity:0;pointer-events:none;
+    transition:opacity 0.2s ease, transform 0.2s ease;backdrop-filter:blur(4px);
+  }
+  #cheat-panel.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;}
+
+  .cheat-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
+  .cheat-title{font-size:11px;letter-spacing:0.14em;color:var(--muted);}
+  .cheat-summary{font-family:'IBM Plex Mono';font-size:11px;color:var(--signal);min-height:14px;}
+
+  .cheat-track{position:relative;height:38px;margin:0 2px;}
+  .cheat-baseline{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--panel-line);}
+  .cheat-marker{position:absolute;top:0;bottom:0;width:1px;background:var(--panel-line);}
+  .cheat-marker.zero{background:var(--muted);}
+  .cheat-marker-label{
+    position:absolute;top:-16px;transform:translateX(-50%);font-size:9px;
+    letter-spacing:0.06em;color:var(--muted);white-space:nowrap;
+  }
+  .cheat-tick{
+    position:absolute;top:50%;width:2px;height:12px;transform:translate(-50%,-50%);
+    background:var(--panel-line);
+  }
+  .cheat-tick.read{background:#4a6fa5;}
+  .cheat-tick.match{background:var(--signal);}
+  .cheat-lock-marker{
+    position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--signal);
+    box-shadow:0 0 8px rgba(125,255,176,0.7);display:none;
+  }
+  .cheat-lock-label{
+    position:absolute;bottom:-18px;transform:translateX(-50%);font-size:10px;
+    color:var(--signal);white-space:nowrap;font-family:'IBM Plex Mono';display:none;
+  }
+
+  .cheat-legend{display:flex;gap:16px;margin-top:20px;font-size:10px;color:var(--muted);letter-spacing:0.02em;}
+  .cheat-legend span{display:inline-flex;align-items:center;gap:5px;}
+  .cheat-legend i{width:8px;height:8px;border-radius:1px;display:inline-block;}
+  .cheat-legend i.dim{background:var(--panel-line);}
+  .cheat-legend i.read{background:#4a6fa5;}
+  .cheat-legend i.match{background:var(--signal);}
+
+  @media (max-width:560px){
+    .duel{gap:18px;}
+    .duel-icon{font-size:34vw;}
+    #verdict{font-size:24px;}
+    .score-value{font-size:32px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+  <div id="vignette"></div>
+  <div id="scanline"></div>
+
+  <div class="hud">
+    <div class="hud-row">
+      <div class="brand"><b>UNBEATABLE</b> // rock paper scissors</div>
+      <div class="score">
+        <div class="score-label">YOU <span class="score-sep">·</span> MACHINE</div>
+        <div class="score-value"><span id="you-score">0</span> <span class="score-sep">—</span> <span id="cpu-score" class="score-loss">0</span></div>
+      </div>
+    </div>
+    <div class="hud-row" style="align-items:flex-end;">
+      <div id="latency"></div>
+      <div id="status"><span class="dot"></span><span id="status-text">initializing camera</span></div>
+    </div>
+  </div>
+
+  <div id="center">
+    <div id="countdown"></div>
+    <div id="reveal">
+      <div class="duel">
+        <div class="duel-side">
+          <div class="duel-label">YOUR HAND</div>
+          <div class="duel-icon" id="icon-you"></div>
+        </div>
+        <div class="duel-vs">vs</div>
+        <div class="duel-side">
+          <div class="duel-label">THE MACHINE</div>
+          <div class="duel-icon" id="icon-cpu"></div>
+        </div>
+      </div>
+      <div id="verdict"></div>
+      <div id="sub"></div>
+    </div>
+  </div>
+
+  <div id="mode-toggle">
+    <button id="mode-impossible" class="active">IMPOSSIBLE</button>
+    <button id="mode-fair">FAIR</button>
+  </div>
+
+  <button class="btn" id="play-again">PLAY AGAIN</button>
+
+  <button id="cheat-toggle">SHOW THE CHEAT</button>
+
+  <div id="cheat-panel">
+    <div class="cheat-header">
+      <span class="cheat-title">DETECTION TIMELINE</span>
+      <span class="cheat-summary" id="cheat-summary">waiting for next round&hellip;</span>
+    </div>
+    <div class="cheat-track" id="cheat-track">
+      <div class="cheat-baseline"></div>
+      <div class="cheat-marker zero" id="marker-zero"><span class="cheat-marker-label">SHOOT!</span></div>
+      <div class="cheat-marker" id="marker-open"><span class="cheat-marker-label">window opens</span></div>
+      <div id="cheat-ticks"></div>
+      <div class="cheat-lock-marker" id="cheat-lock-marker"><span class="cheat-lock-label" id="cheat-lock-label"></span></div>
+    </div>
+    <div class="cheat-legend">
+      <span><i class="dim"></i>no clear shape</span>
+      <span><i class="read"></i>shape read</span>
+      <span><i class="match"></i>locked-in reading</span>
+    </div>
+  </div>
+
+  <div id="start-overlay">
+    <h1>YOU CANNOT<br><span>WIN</span> THIS GAME.</h1>
+    <p>The machine watches your hand form its shape and plays its counter before your brain has finished the thought. Camera access required — this runs entirely in your browser, nothing is recorded or sent anywhere.</p>
+    <button class="btn" id="start-btn">START CAMERA</button>
+    <div id="err"></div>
+  </div>
+</div>
+
+<script type="module">
+import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+// ---------- DOM ----------
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const octx = overlay.getContext('2d');
+const startOverlay = document.getElementById('start-overlay');
+const startBtn = document.getElementById('start-btn');
+const errEl = document.getElementById('err');
+const statusEl = document.getElementById('status');
+const statusText = document.getElementById('status-text');
+const countdownEl = document.getElementById('countdown');
+const revealEl = document.getElementById('reveal');
+const iconYou = document.getElementById('icon-you');
+const iconCpu = document.getElementById('icon-cpu');
+const verdictEl = document.getElementById('verdict');
+const subEl = document.getElementById('sub');
+const latencyEl = document.getElementById('latency');
+const youScoreEl = document.getElementById('you-score');
+const cpuScoreEl = document.getElementById('cpu-score');
+const playAgainBtn = document.getElementById('play-again');
+const modeImpossibleBtn = document.getElementById('mode-impossible');
+const modeFairBtn = document.getElementById('mode-fair');
+const cheatToggle = document.getElementById('cheat-toggle');
+const cheatPanel = document.getElementById('cheat-panel');
+const cheatTicksEl = document.getElementById('cheat-ticks');
+const cheatSummaryEl = document.getElementById('cheat-summary');
+const cheatLockMarker = document.getElementById('cheat-lock-marker');
+const cheatLockLabel = document.getElementById('cheat-lock-label');
+const markerOpen = document.getElementById('marker-open');
+
+// ---------- State ----------
+let handLandmarker = null;
+let running = false;
+let mode = 'impossible'; // 'impossible' | 'fair'
+let youScore = 0, cpuScore = 0;
+let phase = 'idle'; // idle | countdown | reading | revealed
+let shootTimestamp = 0;
+let lastResults = [];
+let cheatVisible = false;
+let tZero = 0;          // performance.now() when "SHOOT!" text appears — the 0ms reference
+let loggingActive = false;
+let frameCount = 0;
+let firstLegibleT = null;
+const RANGE_MIN = -150, RANGE_MAX = 650; // ms window shown on the timeline
+const MOVES = ['ROCK', 'PAPER', 'SCISSORS'];
+const ICONS = { ROCK: '\u270A', PAPER: '\u270B', SCISSORS: '\u270C\uFE0F' };
+const BEATS = { ROCK: 'SCISSORS', PAPER: 'ROCK', SCISSORS: 'PAPER' }; // key beats value
+
+// ---------- Camera + model setup ----------
+async function init() {
+  try {
+    statusText.textContent = 'requesting camera';
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 960, height: 720, facingMode: 'user' },
+      audio: false
+    });
+    video.srcObject = stream;
+    await new Promise(r => video.onloadedmetadata = r);
+    await video.play();
+    overlay.width = video.videoWidth;
+    overlay.height = video.videoHeight;
+
+    statusText.textContent = 'loading vision model';
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numHands: 1,
+      minHandDetectionConfidence: 0.5,
+      minHandPresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    startOverlay.style.display = 'none';
+    statusText.textContent = 'tracking';
+    statusEl.classList.add('tracking');
+    running = true;
+    requestAnimationFrame(loop);
+    beginRound();
+  } catch (e) {
+    console.error(e);
+    errEl.textContent = e.name === 'NotAllowedError'
+      ? 'Camera permission was denied. Allow camera access and reload to play.'
+      : 'Could not start camera or load the hand-tracking model: ' + e.message + '. If this page is embedded in a restricted preview, download the file and open it directly in your browser.';
+  }
+}
+startBtn.addEventListener('click', init);
+
+// ---------- Gesture classification ----------
+function classify(landmarks) {
+  const wrist = landmarks[0];
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  const fingers = [
+    { mcp: 5, pip: 6, tip: 8 },   // index
+    { mcp: 9, pip: 10, tip: 12 }, // middle
+    { mcp: 13, pip: 14, tip: 16 },// ring
+    { mcp: 17, pip: 18, tip: 20 } // pinky
+  ];
+
+  const extended = fingers.map(f => {
+    const tipDist = dist(landmarks[f.tip], wrist);
+    const mcpDist = dist(landmarks[f.mcp], wrist);
+    return tipDist > mcpDist * 1.18;
+  });
+
+  const count = extended.filter(Boolean).length;
+
+  if (count === 0) return 'ROCK';
+  if (count >= 4) return 'PAPER';
+  if (count === 2 && extended[0] && extended[1] && !extended[2] && !extended[3]) return 'SCISSORS';
+  return null; // ambiguous / mid-transition
+}
+
+// ---------- Cheat timeline ----------
+function tToPercent(t) {
+  const clamped = Math.max(RANGE_MIN, Math.min(RANGE_MAX, t));
+  return ((clamped - RANGE_MIN) / (RANGE_MAX - RANGE_MIN)) * 100;
+}
+
+function resetCheatTimeline() {
+  cheatTicksEl.innerHTML = '';
+  cheatLockMarker.style.display = 'none';
+  cheatLockLabel.style.display = 'none';
+  cheatSummaryEl.textContent = cheatVisible ? 'reading your hand\u2026' : '';
+  document.getElementById('marker-zero').style.left = tToPercent(0) + '%';
+  markerOpen.style.left = tToPercent(0) + '%';
+  markerOpen.style.opacity = '0';
+}
+
+function positionOpenMarker() {
+  const openT = shootTimestamp - tZero;
+  markerOpen.style.left = tToPercent(openT) + '%';
+  markerOpen.style.opacity = '1';
+}
+
+function logFrame(ts, gesture) {
+  frameCount++;
+  const t = ts - tZero;
+  if (gesture && firstLegibleT === null) firstLegibleT = t;
+
+  if (!cheatVisible) return; // skip DOM work while the panel is hidden
+
+  const tick = document.createElement('div');
+  tick.className = 'cheat-tick' + (gesture ? ' read' : '');
+  tick.style.left = tToPercent(t) + '%';
+  tick.title = (gesture || 'no clear shape') + ' \u00b7 ' + Math.round(t) + 'ms';
+  cheatTicksEl.appendChild(tick);
+
+  if (loggingActive) {
+    cheatSummaryEl.textContent = `${frameCount} frames sampled\u2026`;
+  }
+}
+
+function markLockOnTimeline(lockGesture, elapsedFromShoot) {
+  const lockT = elapsedFromShoot;
+  cheatLockMarker.style.left = tToPercent(lockT) + '%';
+  cheatLockMarker.style.display = 'block';
+  cheatLockLabel.style.left = tToPercent(lockT) + '%';
+  cheatLockLabel.textContent = `LOCKED \u00b7 ${lockGesture} \u00b7 +${Math.round(elapsedFromShoot)}ms`;
+  cheatLockLabel.style.display = 'block';
+
+  // Retroactively mark ticks that share the locked gesture, so the matching
+  // reads stand out from the noisy transition frames around them.
+  if (cheatVisible) {
+    Array.from(cheatTicksEl.children).forEach(el => {
+      if (el.title.startsWith(lockGesture)) el.classList.add('match');
+    });
+  }
+
+  const firstLegibleMs = firstLegibleT === null ? null : Math.round(firstLegibleT - (shootTimestamp - tZero));
+  cheatSummaryEl.textContent = firstLegibleMs !== null
+    ? `${frameCount} frames \u00b7 first legible ${firstLegibleMs >= 0 ? '+' : ''}${firstLegibleMs}ms \u00b7 locked +${Math.round(elapsedFromShoot)}ms`
+    : `${frameCount} frames \u00b7 locked +${Math.round(elapsedFromShoot)}ms`;
+}
+
+// ---------- Detection loop ----------
+let lastVideoTime = -1;
+function loop(ts) {
+  if (!running) return;
+  if (video.currentTime !== lastVideoTime && handLandmarker) {
+    lastVideoTime = video.currentTime;
+    const result = handLandmarker.detectForVideo(video, performance.now());
+    drawSkeleton(result);
+    handleDetection(result, ts);
+  }
+  requestAnimationFrame(loop);
+}
+
+function drawSkeleton(result) {
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  if (!result.landmarks || result.landmarks.length === 0) return;
+  const lm = result.landmarks[0];
+  const W = overlay.width, H = overlay.height;
+  const conns = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+                 [9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+  octx.strokeStyle = 'rgba(125,255,176,0.55)';
+  octx.lineWidth = 2;
+  conns.forEach(([a,b]) => {
+    octx.beginPath();
+    octx.moveTo(lm[a].x * W, lm[a].y * H);
+    octx.lineTo(lm[b].x * W, lm[b].y * H);
+    octx.stroke();
+  });
+  octx.fillStyle = 'rgba(125,255,176,0.85)';
+  lm.forEach(p => {
+    octx.beginPath();
+    octx.arc(p.x * W, p.y * H, 3, 0, Math.PI * 2);
+    octx.fill();
+  });
+}
+
+function handleDetection(result, ts) {
+  const hasHand = result.landmarks && result.landmarks.length > 0;
+  const gesture = hasHand ? classify(result.landmarks[0]) : null;
+
+  // Log every frame from the moment "SHOOT!" appears, regardless of phase,
+  // so the timeline shows the hand still mid-motion before the reveal too.
+  if (loggingActive && (phase === 'countdown' || phase === 'reading')) {
+    logFrame(ts, gesture);
+  }
+
+  if (phase !== 'reading') return;
+  if (!hasHand) { lastResults = []; return; }
+
+  lastResults.push(gesture);
+  if (lastResults.length > 4) lastResults.shift();
+
+  // Lock in as soon as we see 2 consistent, non-null reads in the recent window —
+  // this fires the instant the hand shape becomes legible, not when it's "finished".
+  const recent = lastResults.slice(-2);
+  if (recent.length === 2 && recent[0] && recent[0] === recent[1]) {
+    lockIn(recent[1], ts);
+  }
+}
+
+// ---------- Round flow ----------
+async function beginRound() {
+  phase = 'idle';
+  revealEl.classList.remove('show');
+  playAgainBtn.classList.remove('show');
+  latencyEl.classList.remove('show');
+  iconYou.classList.remove('show','win','lose');
+  iconCpu.classList.remove('show','win','lose');
+  verdictEl.classList.remove('show');
+  subEl.classList.remove('show');
+  lastResults = [];
+
+  await sleep(500);
+  await beat('ROCK...');
+  await beat('PAPER...');
+  await beat('SCISSORS...');
+  phase = 'countdown';
+  resetCheatTimeline();
+  tZero = performance.now();
+  loggingActive = true;
+  frameCount = 0;
+  firstLegibleT = null;
+  await beat('SHOOT!', true);
+
+  shootTimestamp = performance.now();
+  positionOpenMarker();
+  phase = 'reading';
+
+  // Safety fallback: if nothing legible is read within 1.6s, resolve with best guess or ambiguous.
+  setTimeout(() => {
+    if (phase === 'reading') {
+      const fallback = lastResults.filter(Boolean).pop() || MOVES[Math.floor(Math.random()*3)];
+      lockIn(fallback, performance.now(), true);
+    }
+  }, 1600);
+}
+
+function beat(text, big) {
+  return new Promise(resolve => {
+    countdownEl.textContent = text;
+    countdownEl.classList.remove('show');
+    void countdownEl.offsetWidth; // restart transition
+    countdownEl.classList.add('show');
+    setTimeout(resolve, big ? 550 : 430);
+  });
+}
+
+function lockIn(youMove, ts, timedOut) {
+  if (phase !== 'reading') return;
+  phase = 'revealed';
+
+  const elapsedMs = Math.max(1, Math.round(ts - shootTimestamp));
+  const cpuMove = counterMove(youMove);
+
+  markLockOnTimeline(youMove, ts - tZero);
+  setTimeout(() => { loggingActive = false; }, 150);
+
+  countdownEl.classList.remove('show');
+
+  const revealNow = () => {
+    iconYou.textContent = ICONS[youMove];
+    iconCpu.textContent = ICONS[cpuMove];
+    revealEl.classList.add('show');
+    requestAnimationFrame(() => {
+      iconYou.classList.add('show');
+      iconCpu.classList.add('show');
+    });
+
+    let outcome; // 'win' means machine wins
+    if (youMove === cpuMove) outcome = 'tie';
+    else outcome = 'win'; // machine always counters correctly
+
+    setTimeout(() => {
+      if (outcome === 'tie') {
+        verdictEl.textContent = 'A TIE — SUSPICIOUS.';
+        verdictEl.className = 'tie show';
+        subEl.textContent = "Even the machine misreads a mirror-image sometimes. Go again.";
+      } else {
+        cpuScore++;
+        cpuScoreEl.textContent = cpuScore;
+        iconCpu.classList.add('win');
+        iconYou.classList.add('lose');
+        verdictEl.textContent = 'MACHINE WINS';
+        verdictEl.className = 'lose show';
+        subEl.textContent = timedOut
+          ? "Your hand never resolved into a clean shape — machine played the odds and still took it."
+          : `Read your ${youMove.toLowerCase()} in ${elapsedMs}ms — faster than a human blink (~150ms).`;
+      }
+      subEl.classList.add('show');
+      latencyEl.textContent = `DETECTION LATENCY · ${elapsedMs}MS`;
+      latencyEl.classList.add('show');
+      playAgainBtn.classList.add('show');
+    }, 550);
+  };
+
+  if (mode === 'fair') {
+    // "Fair" mode: machine still detects instantly, but withholds its answer
+    // until a human-scale reaction window has passed, so the reveal feels evenly paced.
+    setTimeout(revealNow, 260);
+  } else {
+    revealNow();
+  }
+}
+
+function counterMove(move) {
+  // returns the move that beats `move`
+  for (const m of MOVES) if (BEATS[m] === move) return m;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+playAgainBtn.addEventListener('click', beginRound);
+
+modeImpossibleBtn.addEventListener('click', () => {
+  mode = 'impossible';
+  modeImpossibleBtn.classList.add('active');
+  modeFairBtn.classList.remove('active');
+});
+modeFairBtn.addEventListener('click', () => {
+  mode = 'fair';
+  modeFairBtn.classList.add('active');
+  modeImpossibleBtn.classList.remove('active');
+});
+
+cheatToggle.addEventListener('click', () => {
+  cheatVisible = !cheatVisible;
+  cheatToggle.classList.toggle('active', cheatVisible);
+  cheatToggle.textContent = cheatVisible ? 'HIDE THE CHEAT' : 'SHOW THE CHEAT';
+  cheatPanel.classList.toggle('show', cheatVisible);
+});
+</script>
+</body>
+</html>
